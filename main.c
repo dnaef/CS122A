@@ -1,4 +1,4 @@
-#define F_CPU 20000000UL  // 1 MHz
+#define F_CPU 8000000UL  // 1 MHz
 
 #include <stdint.h> 
 #include <stdlib.h> 
@@ -13,7 +13,7 @@
 
 #include "nokia5110.c"
 
-
+void oneStep(char stepDir);
  
 //FreeRTOS include files 
 #include "FreeRTOS.h" 
@@ -38,6 +38,9 @@ char red = 0x20;
 char green = 0x40;
 char blue = 0x80;
 char purple = 0xA0;
+
+char nokia_num_blue = 4;
+char nokia_num_green =10;
 
 unsigned char COLOR = 0x00;
 #define posTrigger B7
@@ -241,33 +244,6 @@ void NokiaMenuInit(){
     nokia_lcd_write_string("Water:"  ,1);
     nokia_lcd_set_cursor(0,24);
     nokia_lcd_write_string("Lights:"  ,1);
-
-    //nokia_lcd_render();
-
-
-    char tempmessage = 1;
-    int num = tempmessage;
-    char snum[5];
-    itoa(num, snum, 10);
-    nokia_lcd_set_cursor(33,0);
-    nokia_lcd_write_string(snum,1);
-    char fanStatus = 0;
-    char pumpStatus = 1;
-    char lightStatus = 0;
-    //update the Fan Setting
-    nokia_lcd_set_cursor(25,8);
-    if(fanStatus == 0){nokia_lcd_write_string("OFF",1);}
-    else {nokia_lcd_write_string("ON",1);}
-
-    //update the water Setting
-    nokia_lcd_set_cursor(35,16);
-    if(pumpStatus == 1){nokia_lcd_write_string("DRY",1);}
-    else {nokia_lcd_write_string("WATERED",1);}
-
-    //update the light setting
-    nokia_lcd_set_cursor(41,24);
-    if(lightStatus == 0){nokia_lcd_write_string("OFF",1);}
-    else {nokia_lcd_write_string("ON",1);}
 
     nokia_lcd_render();
     
@@ -739,25 +715,49 @@ void StartSpeedPulse(unsigned portBASE_TYPE Priority){
  
 int main(void) { 
 	DDRA = 0xFF; PORTA=0x00;
-	DDRB = 0x00; PORTB=0xFF;
+	DDRB = 0xFF; PORTB=0x00; //used for nokia screen CHANGE
 	DDRD = 0x00; PORTD=0xFF;
     DDRC = 0x1F; PORTC=0xE0; // sets the highest 3 bits as input and the rest to output
     //DDRC =0xFF; PORTC=0x00;
     //DDRC =0x00; PORTC=0xFF;
-    SPI_MasterInit();
+  //  SPI_MasterInit();
     nokia_lcd_init();
     
     nokia_lcd_clear();
     nokia_lcd_set_cursor(0,0);
-    nokia_lcd_write_string("Temp:   C"  ,1);
+    nokia_lcd_write_string("BLUE: "  ,1);
+    nokia_lcd_set_cursor(0,8);
+    nokia_lcd_write_string("GREEN: "  ,1);
     nokia_lcd_render();
 
-    SPI_DigiPot(0);
+    _delay_ms(300);
+
+    //update blue
+   int temp = nokia_num_blue;
+   char color[5];
+
+
+   itoa(temp,color,10);
+
+     nokia_lcd_set_cursor(35,0);
+     nokia_lcd_write_string(color ,1);
+
+     temp = nokia_num_green;
+     itoa(temp,color,10);
+
+     nokia_lcd_set_cursor(35,8);
+     nokia_lcd_write_string(color ,1);
+
+
+
+    nokia_lcd_render();
+
+   // SPI_DigiPot(0);
     //StartStepPulse1(1);
-	StartSortPulse(2);
-    StartSpeedPulse(1);
+	//StartSortPulse(2);
+    //StartSpeedPulse(1);
     //RunSchedular 
-	ReadD();
-    vTaskStartScheduler(); 
+	//ReadD();
+   // vTaskStartScheduler(); 
 	return 0; 
 }
