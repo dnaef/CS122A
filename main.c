@@ -132,7 +132,7 @@ void ReadUpperB(void){ // Gets the status of all of the inputs
     B1 = ~PINB & 0x02;
     B2 = ~PINB & 0x04;
     B3 = ~PINB & 0x08;
-    B7 = ~PINB & 0x80;
+    //B7 = ~PINB & 0x80;
     return;
 }
 void ReadD(void){ // Gets the status of all of the inputs
@@ -708,7 +708,7 @@ void SortTask(){
     for(;;){
         ReadC();
         SortTick();
-        vTaskDelay(20);        
+        vTaskDelay(200);        
     }
 }
 
