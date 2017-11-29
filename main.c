@@ -1,4 +1,4 @@
-#define F_CPU 8000000UL  // 1 MHz
+#define F_CPU 20000000UL  // 8 MHz
 
 #include <stdint.h> 
 #include <stdlib.h> 
@@ -38,9 +38,14 @@ char red = 0x20;
 char green = 0x40;
 char blue = 0x80;
 char purple = 0xA0;
-
-char nokia_num_blue = 4;
-char nokia_num_green =10;
+char seen = 0;
+unsigned char nokia_num_blue = 0;
+unsigned char nokia_num_green =0;
+unsigned char nokia_num_red = 0;
+unsigned char nokia_num_purp =0;
+unsigned char nokia_speed = 1;
+unsigned char nokia_status = 1;
+char color_arr[5];
 
 unsigned char COLOR = 0x00;
 #define posTrigger B7
@@ -48,10 +53,10 @@ unsigned char COLOR = 0x00;
 
 char dir, dir2 = 0;
 
-enum Stepper1 {INIT,WAIT,WAIT_REL,Deg90,Deg180} Stepper_1;
-enum Stepper2 {INIT2,WAIT2,WAIT_REL2,Deg90_2,Deg180_2} Stepper_2;
+enum LCD {INIT_LCD, UPDATE_LCD} LCD_switch;
 enum Sort {INIT_sort, WAIT_sort, GREEN, RED, BLUE, BLACK, PURPLE, CENTER} Sort_1;
 enum SpeedControl {INIT_sp, WAIT_sp, RUN, STOP, INC, DEC} Speed;
+
 
 unsigned char SetBit(unsigned char x, unsigned char k, unsigned char b)
 { return (b ? x | (0x01 << k) : x & ~(0x01 << k));}
@@ -138,6 +143,7 @@ void ReadUpperB(void){ // Gets the status of all of the inputs
     //B7 = ~PINB & 0x80;
     return;
 }
+
 void ReadD(void){ // Gets the status of all of the inputs
 	D0 = ~PIND & 0x01;
 	D1 = ~PIND & 0x02;
@@ -154,33 +160,12 @@ void ReadC(void){ // Gets the status of all of the inputs
     //TODO: change to standard input
     C5 = PINC & 0x20;
     C6 = PINC & 0x40;
-    C7 = PINC & 0x80;
-    
+    C7 = PINC & 0x80;    
     return;
 }
 
-
-void SpinUP(unsigned short count) {
-	unsigned short i = 0;
-	while (i < count )
-	{
-	 i++;
-	}
-}
-
-void SpinDOWN(unsigned short count) {
-	unsigned short i = 0;
-	while (i < count )
-	{
-		i++;
-	}
-}
-void Stepper1INIT(){
-	Stepper_1 = INIT;
-}
-
-void Stepper2INIT(){
-	Stepper_2 = INIT2;
+void LCD_INIT(){
+    LCD_switch = INIT_LCD;
 }
 
 void SortINIT(){
@@ -195,6 +180,63 @@ short RotationDeg(short degree) {
 	return floor(degree / 1.8 * 2);
 }
 
+void nokia_lcd_draw_data(){
+     nokia_lcd_clear();
+     nokia_lcd_set_cursor(0,0);
+     nokia_lcd_write_string("BLUE: "  ,1);
+     nokia_lcd_set_cursor(0,8);
+     nokia_lcd_write_string("GREEN: "  ,1);
+     nokia_lcd_set_cursor(0,16);
+     nokia_lcd_write_string("RED: "  ,1);
+     nokia_lcd_set_cursor(0,24);
+     nokia_lcd_write_string("PURPLE: "  ,1);
+     nokia_lcd_set_cursor(0,32);
+     nokia_lcd_write_string("SPEED: "  ,1);
+     nokia_lcd_set_cursor(0,40);
+     nokia_lcd_write_string("STATUS: "  ,1);
+     //nokia_lcd_render();
+     //update blue
+     int temp = nokia_num_blue;
+     
+
+
+     itoa(temp,color_arr,10);
+     nokia_lcd_set_cursor(43,0);
+     nokia_lcd_write_string(color_arr ,1);
+
+     temp = nokia_num_green;
+     itoa(temp,color_arr,10);
+     nokia_lcd_set_cursor(43,8);
+     nokia_lcd_write_string(color_arr ,1);
+
+     temp = nokia_num_red;
+     itoa(temp,color_arr,10);
+     nokia_lcd_set_cursor(43,16);
+     nokia_lcd_write_string(color_arr ,1);
+
+     temp = nokia_num_purp;
+     itoa(temp,color_arr,10);
+     nokia_lcd_set_cursor(43,24);
+     nokia_lcd_write_string(color_arr ,1);
+
+     temp = nokia_speed;
+     itoa(temp,color_arr,10);
+     nokia_lcd_set_cursor(43,32);
+     nokia_lcd_write_string(color_arr ,1);
+
+     temp = nokia_status;
+     itoa(temp,color_arr,10);
+     nokia_lcd_set_cursor(43,40);
+     if(temp == 1){
+        nokia_lcd_write_string("STANDBY" ,1);
+     }
+     else if(temp == 2){
+        nokia_lcd_write_string("RUNNING" ,1);
+     }
+
+     nokia_lcd_render();
+}
+
 void moveTo(unsigned short curPos, unsigned short targetPos){//renove crpos
     if (curPos != targetPos){
         if (curPos < targetPos){
@@ -207,8 +249,7 @@ void moveTo(unsigned short curPos, unsigned short targetPos){//renove crpos
         }
     }
 }
-static unsigned short cnt = 0;
-static unsigned short cnt2 = 0;
+
 unsigned long accelerate = 0;
 short deg90,deg180 = 0;
 char step = 0;
@@ -216,37 +257,19 @@ char step2 = 0;
 short curPos = 0; //the current position of the paddles
 unsigned short targetPos = 0; // the position that the paddle need to move to 
 char input = 0;
-
 char color = 0;
 
 unsigned short greenPos = 0;
 unsigned short redPos = 120;
 unsigned short bluePos = 240;
 unsigned short purpPos = 360;
+char temp = 0;
 
 void setDegrees(){
     purpPos = RotationDeg(purpPos);
     redPos = RotationDeg(redPos);
     bluePos = RotationDeg(bluePos);
     greenPos = 0;
-}
-
-
-
-void NokiaMenuInit(){
-
-    nokia_lcd_clear();
-    nokia_lcd_set_cursor(0,0);
-    nokia_lcd_write_string("Temp:   C"  ,1);
-    nokia_lcd_set_cursor(0,8);
-    nokia_lcd_write_string("Fan:"  ,1);
-    nokia_lcd_set_cursor(0,16);
-    nokia_lcd_write_string("Water:"  ,1);
-    nokia_lcd_set_cursor(0,24);
-    nokia_lcd_write_string("Lights:"  ,1);
-
-    nokia_lcd_render();
-    
 }
 
 void oneStep(char stepDir){
@@ -258,158 +281,34 @@ void oneStep(char stepDir){
     
 }
 
-void StepTick1(){
-	//Actions
-	switch(Stepper_1){
-		case INIT:
-			step = 0;
-			accelerate = 500;
-		break;
-		case WAIT:
-			//ReadInput();
-		break;
-		case WAIT_REL:
+void LCD_Tick(){
+    //actions
+    switch(LCD_switch){
+        case INIT_LCD:
+            nokia_lcd_draw_data();
+        break;
+        case UPDATE_LCD:
+            nokia_lcd_draw_data();
+        break;
+        default:
+           // no action
+        break;
 
-		break;
-		case Deg90:
-			
-		break;		
-		case Deg180:
-			
-		break;
-		default:
-			step = 0;
-		break;
-	}
-	//Transitions
-	switch(Stepper_1){
-		case INIT:
-			Stepper_1 = WAIT;
-		break;
-		case WAIT:
-			ReadInput();
-			if (!B0 && !B1)	{
-				Stepper_1 = WAIT_REL;
-			}
-		break;
-		case WAIT_REL:
-			if (B0)	{
-				Stepper_1 = Deg90;
-				dir = B2;
-			}
-			else if (B1) {
-				Stepper_1 = Deg180;
-				dir = B2;
-			}
-			else {
-				Stepper_1 = WAIT_REL;
-			}
-		break;
-		case Deg90:
-			
-			if (cnt< deg90){
-				step = ~step;
-				//SpinUP(accelerate);
-				if (accelerate > 0){
-	//				accelerate--;
-				}
-				cnt++;
-				Stepper_1 = Deg90;
-			}
-			else{
-				Stepper_1 = WAIT;
-				cnt = 0;
-			//	accelerate = 500;
-			}
-		break;
-				case Deg180:
-				if (cnt<deg180){
-					step = ~step;
-					cnt++;
-					Stepper_1 = Deg180;
-				}
-				else{
-					Stepper_1 = WAIT;
-					cnt = 0;
-				}
-				break;
-		default:
-			Stepper_1 = INIT;
-		break;
-	}
+    }
+    //transitions
+    switch(LCD_switch){
+        case INIT_LCD:
+           LCD_switch = UPDATE_LCD;
+        break;
+        case UPDATE_LCD:
+            LCD_switch = UPDATE_LCD;
+        break;
+        default:
+            LCD_switch = INIT_LCD;
+        break;
+    }
 }
 
-void StepTick2(){
-	//Actions
-	switch(Stepper_2){
-		case INIT2:
-			step2 = 0;
-		break;
-		case WAIT2:
-		
-		break;
-		case Deg90_2:
-		
-		break;
-		case Deg180_2:
-		
-		break;
-		default:
-			step2 = 0;
-		break;
-	}
-	//Transitions
-	switch(Stepper_2){
-		case INIT2:
-			Stepper_2 = WAIT2;
-		break;
-		case WAIT2:
-			ReadInput();
-			if (!B3 && !B4)	{
-				Stepper_2 = WAIT_REL2;
-			}
-		break;
-		case WAIT_REL2:
-			if (B3)	{
-				Stepper_2 = Deg90_2;
-				dir2 = B5;
-			}
-			else if (B4) {
-				Stepper_2 = Deg180_2;
-				dir2 = B5;
-			}
-			else {
-				Stepper_2 = WAIT_REL2;
-			}
-		break;
-		case Deg90_2:		
-			if (cnt2 < deg90){
-				step2 = ~step2;
-				cnt2++;
-				Stepper_2 = Deg90_2;
-			}
-			else{
-				Stepper_2 = WAIT2;
-				cnt2 = 0;
-			}
-		break;
-		case Deg180_2:
-			if (cnt2 < deg180){
-				step2 = ~step2;
-				cnt2++;
-				Stepper_2 = Deg180_2;
-			}
-			else{
-				Stepper_2 = WAIT2;
-				cnt2 = 0;
-			}
-		break;
-		default:
-			Stepper_2 = INIT2;
-		break;
-	}
-}
-char temp = 0;
 void SortTick(){
 	//Actions
     
@@ -420,25 +319,42 @@ void SortTick(){
         case WAIT_sort:
             ReadC();            
             if(!C5 && !C6 && !C7){
-
+                
             }
             else{
                 if(C5 && C7){
                     Sort_1 = PURPLE;
+                    if (seen == 0){
+                        nokia_num_purp++;
+                        seen = 1;
+                    }                    
                     targetPos = RotationDeg(purpPos);
                 }
                 else if (C6){//c7 BLUE 
                     targetPos = RotationDeg(greenPos);
+                    if (seen == 0){
+                        nokia_num_green++;
+                        seen = 1;
+                    }                    
                     Sort_1 = GREEN;
                 }            
                 else if(C7){ // c6 gREEN
                     Sort_1 = BLUE;
+                    if (seen == 0){
+                        nokia_num_blue++;
+                        seen = 1;
+                    }
                     targetPos = RotationDeg(bluePos);
                 }
                 else if(C5){ // C5 RED
                     Sort_1 = RED;
+                    if (seen == 0){
+                        nokia_num_red++;
+                        seen = 1;
+                    }
                     targetPos = RotationDeg(redPos);
                 }
+
             }
         break;
         case GREEN:
@@ -495,85 +411,6 @@ void SortTick(){
     }
 }
 
-void SortTickV2(){
-    //actions
-    switch(Sort_1){
-        case INIT_sort:
-            
-        break;
-        case CENTER:
-            ReadUpperB();
-            //if(!posTrigger){
-            //    oneStep(left);
-            //}
-        break;
-        case WAIT_sort:
-            // no action
-        break;
-        case PURPLE:
-            moveTo(targetPos, curPos);
-        break;
-        case BLUE:
-            moveTo(targetPos, curPos);
-        break;
-        case GREEN: 
-            moveTo(targetPos, curPos);
-        break;
-        case RED:
-            moveTo(targetPos, curPos);
-        break;
-        default:
-            // do nothing
-        break;
-    }
-    // transitions
-    switch(Sort_1){
-        case INIT_sort:
-            COLOR = 0;
-            //Sort_1 = CENTER;   
-            Sort_1 = WAIT_sort; 
-        break;
-        case CENTER:
-            if(posTrigger){
-                Sort_1 = RUN;
-                curPos = 0;
-            }
-        break;
-        case WAIT_sort:
-            if(C7 && !C6 && !C5){//1000 COLOR == 0x80
-                Sort_1 = GREEN;
-            }
-            else if(!C7 && !C6 && C5){//0010 COLOR == 0x20
-                Sort_1 = BLUE;
-           }
-           else if(!C7 && C6 && !C5){//0100 COLOR == 0x40
-                Sort_1 = RED;
-           }
-           else if(C7 && !C6 && C5){ //1010 COLOR == 0xA0
-                Sort_1 = PURPLE;
-           }
-           else if(!C7 && !C6 && !C5){
-           // do nothing
-           }
-        break;
-        case PURPLE:
-            targetPos = purpPos;
-        break;
-        case BLUE:
-            targetPos = bluePos;            
-        break;
-        case GREEN: 
-            targetPos = greenPos;
-        break;
-        case RED:
-            targetPos = redPos;
-        break;
-        default:
-            // do nothing
-        break;
-    }
-}
-
 void SpeedControlTick(){
     //Actions
     switch(Speed){
@@ -606,11 +443,14 @@ void SpeedControlTick(){
         case WAIT_sp:
             curSpeed = 1;
             if(B1){
+                nokia_status = 2;
                 Speed = RUN;
             }
         break;
         case RUN:
             if(B0){
+                nokia_status = 1;
+                nokia_speed = 0;
                 Speed = STOP;
                 curSpeed = 0;
                 SPI_DigiPot(curSpeed);
@@ -618,6 +458,7 @@ void SpeedControlTick(){
             if (B2){
                 Speed = INC;
                 if(curSpeed < 128){
+                    nokia_speed++;
                     curSpeed += increment;
                     SPI_DigiPot(curSpeed);
                 }
@@ -625,6 +466,7 @@ void SpeedControlTick(){
             if (B3) {
                 Speed = DEC;
                 if(curSpeed >increment){
+                    nokia_speed--;
                     curSpeed -= increment;
                     SPI_DigiPot(curSpeed);
                 }
@@ -650,59 +492,30 @@ void SpeedControlTick(){
     }
 }
 
-void StepperTask1(){	
-	Stepper1INIT();
-   for(;;){ 	
-   ReadInput();
-	StepTick1();
-	vTaskDelay(5);
-	
-	PORTA = SetBit(PORTA,0,step); 
-	PORTA = SetBit(PORTA,1,dir); 
-	ReadInput();
-		
-   } 
-}
-
-void StepperTask2(){
-	Stepper2INIT();
-	for(;;){
-		StepTick2();
-		vTaskDelay(5);
-		
-		PORTA = SetBit(PORTA,2,step2);
-		PORTA = SetBit(PORTA,3,dir2);
-		ReadInput();
-		
-	}
-}
-
-
 void SortTask(){
     SortINIT();
-    //setDegrees();
     for(;;){
         ReadC();
         SortTick();
-        vTaskDelay(200);        
+        vTaskDelay(20);        
+    }
+}
+
+void LCDTask(){
+    LCD_INIT();
+    for(;;){
+        LCD_Tick();
+        vTaskDelay(1000);
     }
 }
 
 void SpeedControlTask(){
     SpeedINIT();
-    PORTC = 0;
     for(;;){
         ReadUpperB();
         SpeedControlTick();
         vTaskDelay(200);
     }
-}
-void StartStepPulse1(unsigned portBASE_TYPE Priority){
-xTaskCreate(StepperTask1, (signed portCHAR *)"StepperTask1", configMINIMAL_STACK_SIZE, NULL, Priority, NULL );
-}
-
-void StartStepPulse2(unsigned portBASE_TYPE Priority){
-	xTaskCreate(StepperTask2, (signed portCHAR *)"StepperTask2", configMINIMAL_STACK_SIZE, NULL, Priority, NULL );
 }
 
 void StartSortPulse(unsigned portBASE_TYPE Priority){
@@ -712,52 +525,30 @@ void StartSortPulse(unsigned portBASE_TYPE Priority){
 void StartSpeedPulse(unsigned portBASE_TYPE Priority){
     xTaskCreate(SpeedControlTask, (signed portCHAR *)"SpeedControlTask", configMINIMAL_STACK_SIZE, NULL, Priority, NULL );
 }
+
+void StartLCD_Pulse(unsigned portBASE_TYPE Priority){
+    xTaskCreate(LCDTask, (signed portCHAR *)"LCDTask", configMINIMAL_STACK_SIZE, NULL, Priority, NULL );
+}
  
 int main(void) { 
 	DDRA = 0xFF; PORTA=0x00;
-	DDRB = 0xFF; PORTB=0x00; //used for nokia screen CHANGE
+	DDRB = 0x00; PORTB=0xFF; //used for nokia screen CHANGE
 	DDRD = 0x00; PORTD=0xFF;
     DDRC = 0x1F; PORTC=0xE0; // sets the highest 3 bits as input and the rest to output
     //DDRC =0xFF; PORTC=0x00;
     //DDRC =0x00; PORTC=0xFF;
-  //  SPI_MasterInit();
+    SPI_MasterInit();
     nokia_lcd_init();
     
-    nokia_lcd_clear();
-    nokia_lcd_set_cursor(0,0);
-    nokia_lcd_write_string("BLUE: "  ,1);
-    nokia_lcd_set_cursor(0,8);
-    nokia_lcd_write_string("GREEN: "  ,1);
-    nokia_lcd_render();
+   
 
-    _delay_ms(300);
+    SPI_DigiPot(0);
 
-    //update blue
-   int temp = nokia_num_blue;
-   char color[5];
-
-
-   itoa(temp,color,10);
-
-     nokia_lcd_set_cursor(35,0);
-     nokia_lcd_write_string(color ,1);
-
-     temp = nokia_num_green;
-     itoa(temp,color,10);
-
-     nokia_lcd_set_cursor(35,8);
-     nokia_lcd_write_string(color ,1);
-
-
-
-    nokia_lcd_render();
-
-   // SPI_DigiPot(0);
-    //StartStepPulse1(1);
-	//StartSortPulse(2);
-    //StartSpeedPulse(1);
+    StartSpeedPulse(1);
+    StartSortPulse(2);
+    //StartLCD_Pulse(3);
     //RunSchedular 
-	//ReadD();
-   // vTaskStartScheduler(); 
+	ReadD();
+    vTaskStartScheduler(); 
 	return 0; 
 }
