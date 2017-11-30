@@ -1,24 +1,25 @@
-#define F_CPU 20000000UL  // 8 MHz
+#define F_CPU 8000000UL  // 8 MHz
 
-#include <stdint.h> 
-#include <stdlib.h> 
-#include <stdio.h> 
-#include <stdbool.h> 
-#include <string.h> 
-#include <math.h> 
-#include <avr/io.h> 
-#include <avr/interrupt.h> 
-#include <avr/eeprom.h> 
-#include <avr/portpins.h> 
+#include <stdint.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include <string.h>
+#include <math.h>
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <avr/eeprom.h>
+#include <avr/portpins.h>
 
 #include "nokia5110.c"
+#include "usart_ATmega1284.h"
 
 void oneStep(char stepDir);
- 
-//FreeRTOS include files 
-#include "FreeRTOS.h" 
-#include "task.h" 
-#include "croutine.h" 
+
+//FreeRTOS include files
+#include "FreeRTOS.h"
+#include "task.h"
+#include "croutine.h"
 
 #define left 0
 #define right 1
@@ -38,15 +39,15 @@ char red = 0x20;
 char green = 0x40;
 char blue = 0x80;
 char purple = 0xA0;
-char seen = 0;
-unsigned char nokia_num_blue = 0;
-unsigned char nokia_num_green =0;
-unsigned char nokia_num_red = 0;
-unsigned char nokia_num_purp =0;
-unsigned char nokia_speed = 1;
-unsigned char nokia_status = 1;
+unsigned char seen = 0;
+unsigned char nokia_num_blue = 0x01;
+unsigned char nokia_num_green =0x04;
+unsigned char nokia_num_red = 0x08;
+unsigned char nokia_num_purp = 0x10;
+unsigned char nokia_speed = 0x20;
+unsigned char nokia_status =0x40;
 char color_arr[5];
-
+unsigned char someData = 0;
 unsigned char COLOR = 0x00;
 #define posTrigger B7
 
@@ -68,28 +69,28 @@ unsigned char GetBit(unsigned char x, unsigned char k)
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Master code
 void SPI_MasterInit(void) {
-	
-	/* Set MOSI and SCK output, all others input */
-	//DDRB = (1 << DDB5) || (1 << DDB7); //SPI = (1<<DD_MOSI)|(1<<DD_SCK);
-	DDRB = 0xB0;
-	PORTB = 0x4F;
-    	//DDRB = 0xBF;
-    	//PORTB = 0x40;
-	/* Enable SPI, Master, set clock rate fck/16 */
-	SPCR = (1<<SPE)|(1<<MSTR)|(1<<SPR0);
-	// Make sure global interrupts are enabled on SREG register (pg. 9)
-	SREG = 0x80; // 0x80: 1000000
-	
+    
+    /* Set MOSI and SCK output, all others input */
+    //DDRB = (1 << DDB5) || (1 << DDB7); //SPI = (1<<DD_MOSI)|(1<<DD_SCK);
+    DDRB = 0xB0;
+    PORTB = 0x4F;
+    //DDRB = 0xBF;
+    //PORTB = 0x40;
+    /* Enable SPI, Master, set clock rate fck/16 */
+    SPCR = (1<<SPE)|(1<<MSTR)|(1<<SPR0);
+    // Make sure global interrupts are enabled on SREG register (pg. 9)
+    SREG = 0x80; // 0x80: 1000000
+    
 }
 
 void SPI_MasterTransmit(unsigned char cData) {
-	/* Start transmission */
-	SetBit(PORTB,4,0);
-	SPDR = cData;
-	/* Wait for transmission complete */
-	while(!(SPSR & (1<<SPIF)));
-	
-	SetBit(PORTB,4,1);// set SS high
+    /* Start transmission */
+    SetBit(PORTB,4,0);
+    SPDR = cData;
+    /* Wait for transmission complete */
+    while(!(SPSR & (1<<SPIF)));
+    
+    SetBit(PORTB,4,1);// set SS high
 }
 
 void SPI_DigiPot(unsigned char cData) {
@@ -101,38 +102,48 @@ void SPI_DigiPot(unsigned char cData) {
     SPDR = cData;
     /* Wait for transmission complete */
     while(!(SPSR & (1<<SPIF)));
-        
+    
     SetBit(PORTB,4,1);// set SS high
-    }
+}
 
 // Servant code
 void SPI_ServantInit(void) {
-	
-	DDRB = 0x40;// set DDRB to have MISO line as output and MOSI, SCK, and SS as input
-	PORTB = 0xBF;//
-	SPCR |= (1<<SPE)|(1<<SPIE);// set SPCR register to enable SPI and enable SPI interrupt (pg. 168)
-	SREG = 0x80; // 0x80: 1000000// make sure global interrupts are enabled on SREG register (pg. 9)
+    
+    DDRB = 0x40;// set DDRB to have MISO line as output and MOSI, SCK, and SS as input
+    PORTB = 0xBF;//
+    SPCR |= (1<<SPE)|(1<<SPIE);// set SPCR register to enable SPI and enable SPI interrupt (pg. 168)
+    SREG = 0x80; // 0x80: 1000000// make sure global interrupts are enabled on SREG register (pg. 9)
 }
 unsigned char receivedData = 0;
 ISR(SPI_STC_vect) { // this is enabled in with the SPCR register’s “SPI
-	// Interrupt Enable”
-	// SPDR contains the received data, e.g. unsigned char receivedData = SPDR;
-	receivedData = SPDR;
+    // Interrupt Enable”
+    // SPDR contains the received data, e.g. unsigned char receivedData = SPDR;
+    receivedData = SPDR;
 }
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////END SPI CODE///////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+void sendData(char data){
+    if (USART_IsSendReady(0))
+    {
+        USART_Send(data, 0);
+    }
+    if(USART_HasTransmitted(0))	{
+        PORTD = SetBit(PORTD,6,0);
+    }
+}
+
 void ReadInput(void){ // Gets the status of all of the inputs
-	B0 = ~PINB & 0x01;
-	B1 = ~PINB & 0x02;
-	B2 = ~PINB & 0x04;
-	B3 = ~PINB & 0x08;
-	B4 = ~PINB & 0x10;
-	B5 = ~PINB & 0x20;
-	B6 = ~PINB & 0x40;
-	B7 = ~PINB & 0x80;
-	return;
+    B0 = ~PINB & 0x01;
+    B1 = ~PINB & 0x02;
+    B2 = ~PINB & 0x04;
+    B3 = ~PINB & 0x08;
+    B4 = ~PINB & 0x10;
+    B5 = ~PINB & 0x20;
+    B6 = ~PINB & 0x40;
+    B7 = ~PINB & 0x80;
+    return;
 }
 
 void ReadUpperB(void){ // Gets the status of all of the inputs
@@ -145,22 +156,22 @@ void ReadUpperB(void){ // Gets the status of all of the inputs
 }
 
 void ReadD(void){ // Gets the status of all of the inputs
-	D0 = ~PIND & 0x01;
-	D1 = ~PIND & 0x02;
-	D2 = ~PIND & 0x04;
-	D3 = PIND & 0x08;
-	D4 = PIND & 0x10;
-	D5 = PIND & 0x20;
-	D6 = PIND & 0x40;
-	D7 = PIND & 0x80;
-	return;
+    D0 = ~PIND & 0x01;
+    D1 = ~PIND & 0x02;
+    D2 = ~PIND & 0x04;
+    D3 = PIND & 0x08;
+    D4 = PIND & 0x10;
+    D5 = PIND & 0x20;
+    D6 = PIND & 0x40;
+    D7 = PIND & 0x80;
+    return;
 }
 
 void ReadC(void){ // Gets the status of all of the inputs
     //TODO: change to standard input
     C5 = PINC & 0x20;
     C6 = PINC & 0x40;
-    C7 = PINC & 0x80;    
+    C7 = PINC & 0x80;
     return;
 }
 
@@ -169,7 +180,7 @@ void LCD_INIT(){
 }
 
 void SortINIT(){
-	Sort_1 = INIT_sort;
+    Sort_1 = INIT_sort;
 }
 
 void SpeedINIT(){
@@ -177,64 +188,64 @@ void SpeedINIT(){
 }
 
 short RotationDeg(short degree) {
-	return floor(degree / 1.8 * 2);
+    return floor(degree / 1.8 * 2);
 }
 
 void nokia_lcd_draw_data(){
-     nokia_lcd_clear();
-     nokia_lcd_set_cursor(0,0);
-     nokia_lcd_write_string("BLUE: "  ,1);
-     nokia_lcd_set_cursor(0,8);
-     nokia_lcd_write_string("GREEN: "  ,1);
-     nokia_lcd_set_cursor(0,16);
-     nokia_lcd_write_string("RED: "  ,1);
-     nokia_lcd_set_cursor(0,24);
-     nokia_lcd_write_string("PURPLE: "  ,1);
-     nokia_lcd_set_cursor(0,32);
-     nokia_lcd_write_string("SPEED: "  ,1);
-     nokia_lcd_set_cursor(0,40);
-     nokia_lcd_write_string("STATUS: "  ,1);
-     //nokia_lcd_render();
-     //update blue
-     int temp = nokia_num_blue;
-     
+    nokia_lcd_clear();
+    nokia_lcd_set_cursor(0,0);
+    nokia_lcd_write_string("BLUE: "  ,1);
+    nokia_lcd_set_cursor(0,8);
+    nokia_lcd_write_string("GREEN: "  ,1);
+    nokia_lcd_set_cursor(0,16);
+    nokia_lcd_write_string("RED: "  ,1);
+    nokia_lcd_set_cursor(0,24);
+    nokia_lcd_write_string("PURPLE: "  ,1);
+    nokia_lcd_set_cursor(0,32);
+    nokia_lcd_write_string("SPEED: "  ,1);
+    nokia_lcd_set_cursor(0,40);
+    nokia_lcd_write_string("STATUS: "  ,1);
+    //nokia_lcd_render();
+    //update blue
+    int temp = nokia_num_blue;
+    
 
 
-     itoa(temp,color_arr,10);
-     nokia_lcd_set_cursor(43,0);
-     nokia_lcd_write_string(color_arr ,1);
+    itoa(temp,color_arr,10);
+    nokia_lcd_set_cursor(43,0);
+    nokia_lcd_write_string(color_arr ,1);
 
-     temp = nokia_num_green;
-     itoa(temp,color_arr,10);
-     nokia_lcd_set_cursor(43,8);
-     nokia_lcd_write_string(color_arr ,1);
+    temp = nokia_num_green;
+    itoa(temp,color_arr,10);
+    nokia_lcd_set_cursor(43,8);
+    nokia_lcd_write_string(color_arr ,1);
 
-     temp = nokia_num_red;
-     itoa(temp,color_arr,10);
-     nokia_lcd_set_cursor(43,16);
-     nokia_lcd_write_string(color_arr ,1);
+    temp = nokia_num_red;
+    itoa(temp,color_arr,10);
+    nokia_lcd_set_cursor(43,16);
+    nokia_lcd_write_string(color_arr ,1);
 
-     temp = nokia_num_purp;
-     itoa(temp,color_arr,10);
-     nokia_lcd_set_cursor(43,24);
-     nokia_lcd_write_string(color_arr ,1);
+    temp = nokia_num_purp;
+    itoa(temp,color_arr,10);
+    nokia_lcd_set_cursor(43,24);
+    nokia_lcd_write_string(color_arr ,1);
 
-     temp = nokia_speed;
-     itoa(temp,color_arr,10);
-     nokia_lcd_set_cursor(43,32);
-     nokia_lcd_write_string(color_arr ,1);
+    temp = nokia_speed;
+    itoa(temp,color_arr,10);
+    nokia_lcd_set_cursor(43,32);
+    nokia_lcd_write_string(color_arr ,1);
 
-     temp = nokia_status;
-     itoa(temp,color_arr,10);
-     nokia_lcd_set_cursor(43,40);
-     if(temp == 1){
+    temp = nokia_status;
+    itoa(temp,color_arr,10);
+    nokia_lcd_set_cursor(43,40);
+    if(temp == 1){
         nokia_lcd_write_string("STANDBY" ,1);
-     }
-     else if(temp == 2){
+    }
+    else if(temp == 2){
         nokia_lcd_write_string("RUNNING" ,1);
-     }
+    }
 
-     nokia_lcd_render();
+    nokia_lcd_render();
 }
 
 void moveTo(unsigned short curPos, unsigned short targetPos){//renove crpos
@@ -255,7 +266,7 @@ short deg90,deg180 = 0;
 char step = 0;
 char step2 = 0;
 short curPos = 0; //the current position of the paddles
-unsigned short targetPos = 0; // the position that the paddle need to move to 
+unsigned short targetPos = 0; // the position that the paddle need to move to
 char input = 0;
 char color = 0;
 
@@ -273,7 +284,7 @@ void setDegrees(){
 }
 
 void oneStep(char stepDir){
-    PORTA = SetBit(PORTA,1,stepDir); // set the direction that the motors are moving 
+    PORTA = SetBit(PORTA,1,stepDir); // set the direction that the motors are moving
     PORTA = SetBit(PORTA,3,stepDir);
     step = ~step;
     PORTA = SetBit(PORTA,0,step); // move each motor one step
@@ -285,128 +296,134 @@ void LCD_Tick(){
     //actions
     switch(LCD_switch){
         case INIT_LCD:
-            nokia_lcd_draw_data();
+        nokia_lcd_draw_data();
         break;
         case UPDATE_LCD:
-            nokia_lcd_draw_data();
+        nokia_lcd_draw_data();
         break;
         default:
-           // no action
+        // no action
         break;
 
     }
     //transitions
     switch(LCD_switch){
         case INIT_LCD:
-           LCD_switch = UPDATE_LCD;
+        LCD_switch = UPDATE_LCD;
         break;
         case UPDATE_LCD:
-            LCD_switch = UPDATE_LCD;
+        LCD_switch = UPDATE_LCD;
         break;
         default:
-            LCD_switch = INIT_LCD;
+        LCD_switch = INIT_LCD;
         break;
     }
 }
 
 void SortTick(){
-	//Actions
+    //Actions
     
     switch(Sort_1){
-        case INIT_sort: 
-            Sort_1 = WAIT_sort;
-        break; 
+        case INIT_sort:
+        Sort_1 = WAIT_sort;
+        break;
         case WAIT_sort:
-            ReadC();            
-            if(!C5 && !C6 && !C7){
-                
+        ReadC();
+        if(!C5 && !C6 && !C7){
+            PORTD = SetBit(PORTD, 5, 1);
+        }
+        else{
+        PORTD = SetBit(PORTD, 5, 0);
+            if(C5 && C7){
+                Sort_1 = PURPLE;
+                if (seen == 0){
+                    nokia_num_purp++;
+                    someData = 0x08;
+                    sendData(someData);
+                    seen = 1;
+                }
+                targetPos = RotationDeg(purpPos);
             }
-            else{
-                if(C5 && C7){
-                    Sort_1 = PURPLE;
-                    if (seen == 0){
-                        nokia_num_purp++;
-                        seen = 1;
-                    }                    
-                    targetPos = RotationDeg(purpPos);
+            else if (C6){// c6 gREEN
+                targetPos = RotationDeg(greenPos);
+                if (seen == 0){
+                    someData =  0x04;
+                    nokia_num_green++;
+                    seen = 1;
                 }
-                else if (C6){//c7 BLUE 
-                    targetPos = RotationDeg(greenPos);
-                    if (seen == 0){
-                        nokia_num_green++;
-                        seen = 1;
-                    }                    
-                    Sort_1 = GREEN;
-                }            
-                else if(C7){ // c6 gREEN
-                    Sort_1 = BLUE;
-                    if (seen == 0){
-                        nokia_num_blue++;
-                        seen = 1;
-                    }
-                    targetPos = RotationDeg(bluePos);
+                Sort_1 = GREEN;
+            }
+            else if(C7){ //c7 BLUE
+                Sort_1 = BLUE;
+                if (seen == 0){                  
+                    someData  = 0x01;
+                    seen = 1;
                 }
-                else if(C5){ // C5 RED
-                    Sort_1 = RED;
-                    if (seen == 0){
-                        nokia_num_red++;
-                        seen = 1;
-                    }
-                    targetPos = RotationDeg(redPos);
+                targetPos = RotationDeg(bluePos);
+            }
+            else if(C5){ // C5 RED
+                Sort_1 = RED;
+                if (seen == 0){
+                    nokia_num_red++;
+                    seen = 1;
+                    someData = 0x02;
                 }
+                targetPos = RotationDeg(redPos);
+            }
 
-            }
+        }
         break;
         case GREEN:
-            if(curPos >targetPos){
-                oneStep(left);
-                curPos--;
-            }
-            else{
-                Sort_1 = WAIT_sort;
-            }
+        if(curPos >targetPos){
+            oneStep(left);
+            curPos--;
+        }
+        else{
+            Sort_1 = WAIT_sort;
+        }
         break;
-        case RED: 
-            if (curPos < targetPos){
-                oneStep(right);
-                curPos++;
-            }
-            else if (curPos > targetPos){
-                oneStep(left);
-                curPos--;
-            }
-            if (curPos == targetPos){
-                Sort_1 = WAIT_sort;
-            }            
+        case RED:
+        if (curPos < targetPos){
+            oneStep(right);
+            curPos++;
+        }
+        else if (curPos > targetPos){
+            oneStep(left);
+            curPos--;
+        }
+        if (curPos == targetPos){
+            Sort_1 = WAIT_sort;
+        }
         break;
         case BLUE:
-            if (curPos < targetPos){
-                oneStep(right);
-                curPos++;
-            }
-            else if (curPos > targetPos){
-                oneStep(left);
-                curPos--;
-            }
-            if (curPos == targetPos){
-                Sort_1 = WAIT_sort;
-            }
+        if (curPos < targetPos){
+            oneStep(right);
+            curPos++;
+        }
+        else if (curPos > targetPos){
+            oneStep(left);
+            curPos--;
+        }
+        if (curPos == targetPos){
+            Sort_1 = WAIT_sort;
+        }
         break;
         case PURPLE:
-            if (curPos < targetPos){
-                oneStep(right);
-                curPos++;
-            }
-            else if (curPos > targetPos){
-                oneStep(left);
-                curPos--;
-            }
-            if (curPos == targetPos){
-                Sort_1 = WAIT_sort;
-            }            
+        if (curPos < targetPos){
+            oneStep(right);
+            curPos++;
+        }
+        else if (curPos > targetPos){
+            oneStep(left);
+            curPos--;
+        }
+        if (curPos == targetPos){
+            Sort_1 = WAIT_sort;
+            seen = 0;
+        }
         break;
         default:
-            
+        
         break;
     }
 }
@@ -415,8 +432,8 @@ void SpeedControlTick(){
     //Actions
     switch(Speed){
         case INIT_sp:
-            curSpeed = 1;
-            SPI_DigiPot(curSpeed);
+        curSpeed = 1;
+        SPI_DigiPot(curSpeed);
         break;
         case WAIT_sp:
         break;
@@ -427,67 +444,72 @@ void SpeedControlTick(){
         case DEC:
         break;
         case STOP:
-            curSpeed = 0;
-            SPI_DigiPot(1);
+        curSpeed = 0;
+        SPI_DigiPot(1);
         break;
         default:
-            curSpeed = 0;
-            SPI_DigiPot(curSpeed);
+        curSpeed = 0;
+        SPI_DigiPot(curSpeed);
         break;
     }
     //Transitions
     switch(Speed){
         case INIT_sp:
-            Speed = WAIT_sp;
+        Speed = WAIT_sp;
         break;
         case WAIT_sp:
-            curSpeed = 1;
-            if(B1){
-                nokia_status = 2;
-                Speed = RUN;
-            }
+        curSpeed = 1;
+        sendData(0xF1);
+        if(B1){
+            nokia_status = 2;
+            sendData(0x40);//update status to lcd
+            Speed = RUN;
+        }
         break;
         case RUN:
-            if(B0){
-                nokia_status = 1;
-                nokia_speed = 0;
-                Speed = STOP;
-                curSpeed = 0;
+        if(B0){
+            nokia_status = 1;
+            nokia_speed = 0;
+            Speed = STOP;
+            curSpeed = 0;
+            SPI_DigiPot(curSpeed);            
+            sendData(0x80);
+        }
+        if (B2){
+            Speed = INC;
+            if(curSpeed < 128){
+                nokia_speed++;
+                curSpeed += increment;
                 SPI_DigiPot(curSpeed);
+                sendData(0x10);
             }
-            if (B2){
-                Speed = INC;
-                if(curSpeed < 128){
-                    nokia_speed++;
-                    curSpeed += increment;
-                    SPI_DigiPot(curSpeed);
-                }
+        }
+        if (B3) {
+            Speed = DEC;
+            if(curSpeed >increment){
+                nokia_speed--;
+                curSpeed -= increment;
+                SPI_DigiPot(curSpeed);
+                sendData(0x20);
             }
-            if (B3) {
-                Speed = DEC;
-                if(curSpeed >increment){
-                    nokia_speed--;
-                    curSpeed -= increment;
-                    SPI_DigiPot(curSpeed);
-                }
-            }
+        }
 
         break;
         case INC:
-            if(!B2) {
-                Speed = RUN;
-            }
+        if(!B2) {
+            Speed = RUN;
+        }
         break;
         case DEC:
-            if(!B3) {
-                Speed = RUN;
-            }
+        if(!B3) {
+            Speed = RUN;
+        }
         break;
         case STOP:
-            Speed = WAIT_sp;
+        Speed = WAIT_sp;
         break;
         default:
-            Speed = INIT_sp;
+        Speed = INIT_sp;
         break;
     }
 }
@@ -497,21 +519,34 @@ void SortTask(){
     for(;;){
         ReadC();
         SortTick();
-        vTaskDelay(20);        
+        vTaskDelay(20);
     }
 }
-
+static char data = 0;
 void LCDTask(){
     LCD_INIT();
+    
+        data++;
+        if (USART_IsSendReady(0))
+        {
+            USART_Send(data, 0);
+        }
+        if(USART_HasTransmitted(0))	{
+        }
+        USART_Flush(0);
+    
+
     for(;;){
         LCD_Tick();
-        vTaskDelay(1000);
+          
+        vTaskDelay(2000);
     }
 }
 
 void SpeedControlTask(){
     SpeedINIT();
     for(;;){
+        
         ReadUpperB();
         SpeedControlTick();
         vTaskDelay(200);
@@ -529,26 +564,29 @@ void StartSpeedPulse(unsigned portBASE_TYPE Priority){
 void StartLCD_Pulse(unsigned portBASE_TYPE Priority){
     xTaskCreate(LCDTask, (signed portCHAR *)"LCDTask", configMINIMAL_STACK_SIZE, NULL, Priority, NULL );
 }
- 
-int main(void) { 
-	DDRA = 0xFF; PORTA=0x00;
-	DDRB = 0x00; PORTB=0xFF; //used for nokia screen CHANGE
-	DDRD = 0x00; PORTD=0xFF;
+
+int main(void) {
+    DDRA = 0xFF; PORTA=0x00;
+    DDRB = 0xFF; PORTB=0x00;
+    DDRD = 0x00; PORTD=0xFF;
     DDRC = 0x1F; PORTC=0xE0; // sets the highest 3 bits as input and the rest to output
-    //DDRC =0xFF; PORTC=0x00;
-    //DDRC =0x00; PORTC=0xFF;
+
     SPI_MasterInit();
     nokia_lcd_init();
+    initUSART(0);    
     
-   
-
     SPI_DigiPot(0);
+
+    //TODO uncommemt
 
     StartSpeedPulse(1);
     StartSortPulse(2);
     //StartLCD_Pulse(3);
-    //RunSchedular 
-	ReadD();
-    vTaskStartScheduler(); 
-	return 0; 
+    unsigned char counts = 0;
+    
+
+    //RunSchedular
+    ReadD();
+    vTaskStartScheduler();
+    return 0;
 }
