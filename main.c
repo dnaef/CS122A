@@ -348,6 +348,7 @@ void SortTick(){
                 targetPos = RotationDeg(greenPos);
                 if (seen == 0){
                     someData =  0x04;
+                    sendData(someData);
                     nokia_num_green++;
                     seen = 1;
                 }
@@ -357,6 +358,7 @@ void SortTick(){
                 Sort_1 = BLUE;
                 if (seen == 0){                  
                     someData  = 0x01;
+                    sendData(someData);
                     seen = 1;
                 }
                 targetPos = RotationDeg(bluePos);
@@ -367,6 +369,7 @@ void SortTick(){
                     nokia_num_red++;
                     seen = 1;
                     someData = 0x02;
+                    sendData(someData);
                 }
                 targetPos = RotationDeg(redPos);
             }
@@ -438,6 +441,7 @@ void SpeedControlTick(){
         case WAIT_sp:
         break;
         case RUN:
+        //sendData(0x80);
         break;
         case INC:
         break;
@@ -459,10 +463,10 @@ void SpeedControlTick(){
         break;
         case WAIT_sp:
         curSpeed = 1;
-        sendData(0xF1);
+        
         if(B1){
-            nokia_status = 2;
-            sendData(0x40);//update status to lcd
+            //update status to lcd
+            sendData(0x80);
             Speed = RUN;
         }
         break;
@@ -473,7 +477,7 @@ void SpeedControlTick(){
             Speed = STOP;
             curSpeed = 0;
             SPI_DigiPot(curSpeed);            
-            sendData(0x80);
+            sendData(0x40);
         }
         if (B2){
             Speed = INC;
@@ -482,7 +486,7 @@ void SpeedControlTick(){
                 curSpeed += increment;
                 SPI_DigiPot(curSpeed);
                 sendData(0x10);
-            }
+            }   
         }
         if (B3) {
             Speed = DEC;
@@ -507,6 +511,7 @@ void SpeedControlTick(){
         break;
         case STOP:
         Speed = WAIT_sp;
+        sendData(0xF1);
         break;
         default:
         Speed = INIT_sp;
@@ -525,15 +530,15 @@ void SortTask(){
 static char data = 0;
 void LCDTask(){
     LCD_INIT();
-    
-        data++;
-        if (USART_IsSendReady(0))
-        {
-            USART_Send(data, 0);
-        }
-        if(USART_HasTransmitted(0))	{
-        }
-        USART_Flush(0);
+//     
+//         data++;
+//         if (USART_IsSendReady(0))
+//         {
+//             USART_Send(data, 0);
+//         }
+//         if(USART_HasTransmitted(0))	{
+//         }
+//         USART_Flush(0);
     
 
     for(;;){
