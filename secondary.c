@@ -109,8 +109,7 @@ void nokia_lcd_draw_data(){
     nokia_lcd_write_string("STATUS: "  ,1);
     //nokia_lcd_render();
     //update blue
-    int temp = nokia_num_blue;
-    
+    int temp = nokia_num_blue;  
 
 
     itoa(temp,color_arr,10);
@@ -148,7 +147,7 @@ void nokia_lcd_draw_data(){
     }
 
     nokia_lcd_render();
-    _delay_ms(300);
+    _delay_ms(100);
 
 }
 void LCD_Tick(){

@@ -1,4 +1,4 @@
-#define F_CPU 8000000UL  // 8 MHz
+#define F_CPU 20000000UL  // 8 MHz
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -34,6 +34,8 @@ unsigned char curSpeed = 1;
 const char increment = 10; // amount that the speed increases per press
 
 unsigned char count = 0;
+unsigned char cnt = 0;
+
 
 char red = 0x20;
 char green = 0x40;
@@ -57,6 +59,7 @@ char dir, dir2 = 0;
 enum LCD {INIT_LCD, UPDATE_LCD} LCD_switch;
 enum Sort {INIT_sort, WAIT_sort, GREEN, RED, BLUE, BLACK, PURPLE, CENTER} Sort_1;
 enum SpeedControl {INIT_sp, WAIT_sp, RUN, STOP, INC, DEC} Speed;
+enum Stepper1 {INIT,WAIT,WAIT_REL,Deg90,Deg180} Stepper_1;
 
 
 unsigned char SetBit(unsigned char x, unsigned char k, unsigned char b)
@@ -185,6 +188,10 @@ void SortINIT(){
 
 void SpeedINIT(){
     Speed = INIT_sp;
+}
+
+void Stepper1INIT(){
+    Stepper_1 = INIT;
 }
 
 short RotationDeg(short degree) {
@@ -320,6 +327,46 @@ void LCD_Tick(){
     }
 }
 
+void StepTick1(){
+    //Actions
+    switch(Stepper_1){
+        case INIT:
+        break;
+        case WAIT:
+        //ReadInput();
+        break;
+        case WAIT_REL:
+
+        break;
+        case Deg90:
+        
+        break;
+        case Deg180:
+        
+        break;
+        default:
+
+        break;
+    }
+    //Transitions
+    switch(Stepper_1){
+        case INIT:
+        Stepper_1 = WAIT;
+        break;
+        case WAIT:
+            if(nokia_status == 1){
+                step2 = ~step2;
+                cnt++;
+            }
+        break;
+        break;
+        default:
+        Stepper_1 = INIT;
+        break;
+    }
+}
+
+
 void SortTick(){
     //Actions
     
@@ -330,10 +377,10 @@ void SortTick(){
         case WAIT_sort:
         ReadC();
         if(!C5 && !C6 && !C7){
-            PORTD = SetBit(PORTD, 5, 1);
+            //PORTD = SetBit(PORTD, 5, 1);
         }
         else{
-        PORTD = SetBit(PORTD, 5, 0);
+        //PORTD = SetBit(PORTD, 5, 0);
             if(C5 && C7){
                 Sort_1 = PURPLE;
                 if (seen == 0){
@@ -524,23 +571,14 @@ void SortTask(){
     for(;;){
         ReadC();
         SortTick();
-        vTaskDelay(20);
+        vTaskDelay(5);
     }
 }
+
+
 static char data = 0;
 void LCDTask(){
     LCD_INIT();
-//     
-//         data++;
-//         if (USART_IsSendReady(0))
-//         {
-//             USART_Send(data, 0);
-//         }
-//         if(USART_HasTransmitted(0))	{
-//         }
-//         USART_Flush(0);
-    
-
     for(;;){
         LCD_Tick();
           
@@ -550,12 +588,28 @@ void LCDTask(){
 
 void SpeedControlTask(){
     SpeedINIT();
-    for(;;){
-        
+    for(;;){        
         ReadUpperB();
         SpeedControlTick();
         vTaskDelay(200);
     }
+}
+
+void StepperTask1(){
+    Stepper1INIT();
+    for(;;){
+        StepTick1();
+        vTaskDelay(200);
+        
+        PORTA = SetBit(PORTA,4,step2);
+        PORTA = SetBit(PORTA,5,dir);
+        ReadInput();
+        
+    }
+}
+
+void StartStepPulse1(unsigned portBASE_TYPE Priority){
+    xTaskCreate(StepperTask1, (signed portCHAR *)"StepperTask1", configMINIMAL_STACK_SIZE, NULL, Priority, NULL );
 }
 
 void StartSortPulse(unsigned portBASE_TYPE Priority){
@@ -574,7 +628,7 @@ int main(void) {
     DDRA = 0xFF; PORTA=0x00;
     DDRB = 0xFF; PORTB=0x00;
     DDRD = 0x00; PORTD=0xFF;
-    DDRC = 0x1F; PORTC=0xE0; // sets the highest 3 bits as input and the rest to output
+    DDRC = 0xFF; PORTC=0x00; // sets the highest 3 bits as input and the rest to output
 
     SPI_MasterInit();
     nokia_lcd_init();
@@ -583,7 +637,7 @@ int main(void) {
     SPI_DigiPot(0);
 
     //TODO uncommemt
-
+    StartStepPulse1(3);
     StartSpeedPulse(1);
     StartSortPulse(2);
     //StartLCD_Pulse(3);
